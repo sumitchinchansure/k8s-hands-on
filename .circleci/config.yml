@@ -3,21 +3,77 @@ version: 2.1
 orbs:
   docker: circleci/docker@2.2.0
 
+# Path filtering configuration - triggers specific workflows based on changed files
+parameters:
+  run-app-build:
+    type: boolean
+    default: false
+  run-k8s-validation:
+    type: boolean
+    default: false
+  run-infrastructure:
+    type: boolean
+    default: false
+
 workflows:
-  build-and-deploy:
+  # Main workflow - runs on every commit
+  main:
+    when:
+      not:
+        or:
+          - << pipeline.parameters.run-app-build >>
+          - << pipeline.parameters.run-k8s-validation >>
+          - << pipeline.parameters.run-infrastructure >>
     jobs:
-      - build-and-test
-      - build-and-push:
+      - detect-changes
+      - app-build-and-test:
           requires:
-            - build-and-test
+            - detect-changes
+      - k8s-validate:
+          requires:
+            - detect-changes
+      - build-and-push-image:
+          requires:
+            - app-build-and-test
           filters:
             branches:
               only:
-                - master
                 - main
+                - master
+
+  # Application-specific workflow
+  app-workflow:
+    when: << pipeline.parameters.run-app-build >>
+    jobs:
+      - app-build-and-test
+      - build-and-push-image:
+          requires:
+            - app-build-and-test
+          filters:
+            branches:
+              only:
+                - main
+                - master
+
+  # Kubernetes validation workflow
+  k8s-workflow:
+    when: << pipeline.parameters.run-k8s-validation >>
+    jobs:
+      - k8s-validate
 
 jobs:
-  build-and-test:
+  detect-changes:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - run:
+          name: Detect changed files
+          command: |
+            echo "Checking for changes in different directories..."
+            git diff --name-only HEAD~1 HEAD || echo "No previous commit to compare"
+
+  app-build-and-test:
     docker:
       - image: cimg/node:18.18
       - image: cimg/redis:7.0
@@ -26,29 +82,70 @@ jobs:
       - checkout
       - restore_cache:
           keys:
-            - v1-dependencies-{{ checksum "package.json" }}
-            - v1-dependencies-
+            - v1-app-dependencies-{{ checksum "apps/sample-app/package.json" }}
+            - v1-app-dependencies-
       - run:
           name: Install dependencies
-          command: npm install
+          command: |
+            cd apps/sample-app
+            npm install
       - save_cache:
           paths:
-            - node_modules
-          key: v1-dependencies-{{ checksum "package.json" }}
+            - apps/sample-app/node_modules
+          key: v1-app-dependencies-{{ checksum "apps/sample-app/package.json" }}
       - run:
           name: Run tests
           command: |
+            cd apps/sample-app
             # Add your test command here when you have tests
             echo "No tests configured yet - skipping test phase"
             npm run --if-present test
       - run:
           name: Lint code
           command: |
+            cd apps/sample-app
             # Add linting when available
             echo "No linting configured yet - skipping lint phase"
             npm run --if-present lint
+      - run:
+          name: Security audit
+          command: |
+            cd apps/sample-app
+            npm audit --audit-level moderate
 
-  build-and-push:
+  k8s-validate:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - run:
+          name: Install kubectl
+          command: |
+            curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+            chmod +x kubectl
+            sudo mv kubectl /usr/local/bin/
+      - run:
+          name: Validate Kubernetes manifests
+          command: |
+            echo "Validating Kubernetes manifests..."
+            find k8s/ -name "*.yaml" -o -name "*.yml" | while read manifest; do
+              echo "Validating $manifest"
+              kubectl --dry-run=client apply -f "$manifest" || echo "Warning: $manifest may have issues"
+            done
+      - run:
+          name: Check for security issues
+          command: |
+            echo "Checking for common security anti-patterns..."
+            # Check for privileged containers
+            if grep -r "privileged.*true" k8s/; then
+              echo "WARNING: Found privileged containers"
+            fi
+            # Check for root user
+            if grep -r "runAsUser.*0" k8s/; then
+              echo "WARNING: Found containers running as root"
+            fi
+
+  build-and-push-image:
     docker:
       - image: cimg/base:stable
     working_directory: ~/project
@@ -59,6 +156,8 @@ jobs:
       - run:
           name: Build Docker image
           command: |
+            cd apps/sample-app
+
             # Get the short commit SHA
             SHORT_SHA=$(echo $CIRCLE_SHA1 | cut -c1-7)
 
@@ -91,8 +190,14 @@ jobs:
             echo "Pushing image with tag: $IMAGE_TAG"
             docker push $DOCKERHUB_USERNAME/k8s-sample-app:$IMAGE_TAG
 
-            # Only push latest tag for master branch or version tags
-            if [ "$CIRCLE_BRANCH" = "master" ] || [ -n "$CIRCLE_TAG" ]; then
+            # Only push latest tag for main/master branch or version tags
+            if [ "$CIRCLE_BRANCH" = "master" ] || [ "$CIRCLE_BRANCH" = "main" ] || [ -n "$CIRCLE_TAG" ]; then
               echo "Pushing latest tag"
               docker push $DOCKERHUB_USERNAME/k8s-sample-app:latest
             fi
+      - run:
+          name: Update Kubernetes manifests
+          command: |
+            # This would typically update manifests with new image tags
+            # For GitOps, this might trigger a separate repository update
+            echo "Image build complete. Consider updating k8s manifests with new image tag."
