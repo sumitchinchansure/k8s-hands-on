@@ -1,0 +1,98 @@
+version: 2.1
+
+orbs:
+  docker: circleci/docker@2.2.0
+
+workflows:
+  build-and-deploy:
+    jobs:
+      - build-and-test
+      - build-and-push:
+          requires:
+            - build-and-test
+          filters:
+            branches:
+              only:
+                - master
+                - main
+
+jobs:
+  build-and-test:
+    docker:
+      - image: cimg/node:18.18
+      - image: cimg/redis:7.0
+    working_directory: ~/project
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "package.json" }}
+            - v1-dependencies-
+      - run:
+          name: Install dependencies
+          command: npm install
+      - save_cache:
+          paths:
+            - node_modules
+          key: v1-dependencies-{{ checksum "package.json" }}
+      - run:
+          name: Run tests
+          command: |
+            # Add your test command here when you have tests
+            echo "No tests configured yet - skipping test phase"
+            npm run --if-present test
+      - run:
+          name: Lint code
+          command: |
+            # Add linting when available
+            echo "No linting configured yet - skipping lint phase"
+            npm run --if-present lint
+
+  build-and-push:
+    docker:
+      - image: cimg/base:stable
+    working_directory: ~/project
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - run:
+          name: Build Docker image
+          command: |
+            # Get the short commit SHA
+            SHORT_SHA=$(echo $CIRCLE_SHA1 | cut -c1-7)
+
+            # Set image tag - use version tag if available, otherwise use branch-sha
+            if [ -n "$CIRCLE_TAG" ]; then
+              IMAGE_TAG=$CIRCLE_TAG
+            else
+              IMAGE_TAG="${CIRCLE_BRANCH}-${SHORT_SHA}"
+            fi
+
+            echo "Building image with tag: $IMAGE_TAG"
+            docker build -t $DOCKERHUB_USERNAME/k8s-sample-app:$IMAGE_TAG .
+            docker build -t $DOCKERHUB_USERNAME/k8s-sample-app:latest .
+      - run:
+          name: Login to Docker Hub
+          command: echo $DOCKERHUB_PASSWORD | docker login -u $DOCKERHUB_USERNAME --password-stdin
+      - run:
+          name: Push Docker image
+          command: |
+            # Get the short commit SHA
+            SHORT_SHA=$(echo $CIRCLE_SHA1 | cut -c1-7)
+
+            # Set image tag
+            if [ -n "$CIRCLE_TAG" ]; then
+              IMAGE_TAG=$CIRCLE_TAG
+            else
+              IMAGE_TAG="${CIRCLE_BRANCH}-${SHORT_SHA}"
+            fi
+
+            echo "Pushing image with tag: $IMAGE_TAG"
+            docker push $DOCKERHUB_USERNAME/k8s-sample-app:$IMAGE_TAG
+
+            # Only push latest tag for master branch or version tags
+            if [ "$CIRCLE_BRANCH" = "master" ] || [ -n "$CIRCLE_TAG" ]; then
+              echo "Pushing latest tag"
+              docker push $DOCKERHUB_USERNAME/k8s-sample-app:latest
+            fi
