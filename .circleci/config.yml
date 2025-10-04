@@ -168,6 +168,9 @@ jobs:
               IMAGE_TAG="${CIRCLE_BRANCH}-${SHORT_SHA}"
             fi
 
+            # Set default username if not provided
+            DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME:-"sumitchinchansure"}
+
             echo "Building image with tag: $IMAGE_TAG"
             docker build -t $DOCKERHUB_USERNAME/k8s-sample-app:$IMAGE_TAG .
             docker build -t $DOCKERHUB_USERNAME/k8s-sample-app:latest .
@@ -179,6 +182,9 @@ jobs:
           command: |
             # Get the short commit SHA
             SHORT_SHA=$(echo $CIRCLE_SHA1 | cut -c1-7)
+
+            # Set default username if not provided
+            DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME:-"sumitchinchansure"}
 
             # Set image tag
             if [ -n "$CIRCLE_TAG" ]; then
