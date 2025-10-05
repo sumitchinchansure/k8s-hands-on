@@ -6,7 +6,7 @@ metadata:
     app: surprise-me-frontend
     tier: frontend
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: surprise-me-frontend
