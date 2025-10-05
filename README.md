@@ -2,6 +2,10 @@
 
 This repository is designed for hands-on Kubernetes learning with a local 3-node cluster setup using Kind.
 
+## 🎉 Surprise Me Application
+
+Featured project: A delightful web application that serves interesting facts to brighten your day!
+
 ## Cluster Setup
 
 ### Prerequisites
