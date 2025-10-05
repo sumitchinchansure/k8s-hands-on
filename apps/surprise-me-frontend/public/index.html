@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Surprise Me! 🎉</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+        }
+
+        .container {
+            max-width: 600px;
+            padding: 2rem;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(45deg, #ffd89b, #19547b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+        }
+
+        .surprise-box {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 15px;
+            padding: 2rem;
+            margin: 2rem 0;
+            min-height: 150px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .surprise-text {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            font-style: italic;
+        }
+
+        .surprise-button {
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            border: none;
+            color: white;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            font-weight: bold;
+        }
+
+        .surprise-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .surprise-button:active {
+            transform: translateY(0);
+        }
+
+        .surprise-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .footer {
+            margin-top: 2rem;
+            opacity: 0.7;
+            font-size: 0.9rem;
+        }
+
+        .error {
+            color: #ff6b6b;
+            background: rgba(255, 107, 107, 0.1);
+            border: 1px solid rgba(255, 107, 107, 0.3);
+            padding: 1rem;
+            border-radius: 10px;
+            margin: 1rem 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Surprise Me! 🎉</h1>
+        <p class="subtitle">When life gets boring, click the button for an amazing fact!</p>
+
+        <div class="surprise-box" id="surpriseBox">
+            <p class="surprise-text" id="surpriseText">Click the button below to get your first surprising fact!</p>
+        </div>
+
+        <button class="surprise-button" id="surpriseBtn" onclick="getSurprise()">
+            Surprise Me! ✨
+        </button>
+
+        <div class="footer">
+            <p>🚀 Powered by Kubernetes & Node.js</p>
+        </div>
+    </div>
+
+    <script>
+        let isLoading = false;
+
+        async function getSurprise() {
+            if (isLoading) return;
+
+            isLoading = true;
+            const button = document.getElementById('surpriseBtn');
+            const surpriseText = document.getElementById('surpriseText');
+
+            // Show loading state
+            button.innerHTML = '<span class="loading"></span> Getting surprise...';
+            button.disabled = true;
+
+            try {
+                const response = await fetch('/api/surprise');
+                const data = await response.json();
+
+                if (data.success) {
+                    surpriseText.textContent = data.fact;
+
+                    // Add some animation
+                    surpriseText.style.opacity = '0';
+                    setTimeout(() => {
+                        surpriseText.style.opacity = '1';
+                        surpriseText.style.transition = 'opacity 0.5s ease';
+                    }, 100);
+                } else {
+                    showError('Failed to get surprise: ' + data.message);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showError('Network error. Please try again!');
+            } finally {
+                isLoading = false;
+                button.innerHTML = 'Surprise Me Again! ✨';
+                button.disabled = false;
+            }
+        }
+
+        function showError(message) {
+            const surpriseText = document.getElementById('surpriseText');
+            surpriseText.innerHTML = `<div class="error">❌ ${message}</div>`;
+        }
+
+        // Auto-load first surprise on page load
+        window.addEventListener('load', () => {
+            setTimeout(getSurprise, 1000);
+        });
+    </script>
+</body>
+</html>

@@ -1,19 +1,39 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: sample-app
+  name: surprise-me-backend
 spec:
   template:
     spec:
       containers:
-      - name: sample-app
+      - name: surprise-me-backend
         env:
         - name: NODE_ENV
           value: "development"
         resources:
           requests:
             memory: "32Mi"
-            cpu: "100m"
+            cpu: "50m"
           limits:
             memory: "64Mi"
-            cpu: "200m"
+            cpu: "100m"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: surprise-me-frontend
+spec:
+  template:
+    spec:
+      containers:
+      - name: surprise-me-frontend
+        env:
+        - name: NODE_ENV
+          value: "development"
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "50m"
+          limits:
+            memory: "64Mi"
+            cpu: "100m"

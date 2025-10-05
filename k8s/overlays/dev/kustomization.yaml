@@ -2,16 +2,21 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - ../../base/sample-app-deployment.yaml
+  - ../../base/surprise-me-backend.yaml
+  - ../../base/surprise-me-frontend.yaml
 
 namePrefix: dev-
 
 replicas:
-  - name: sample-app
+  - name: surprise-me-backend
+    count: 1
+  - name: surprise-me-frontend
     count: 1
 
 images:
-  - name: your-dockerhub-username/k8s-sample-app
+  - name: sumitchinchansure/surprise-me-backend
+    newTag: dev-latest
+  - name: sumitchinchansure/surprise-me-frontend
     newTag: dev-latest
 
 patchesStrategicMerge:

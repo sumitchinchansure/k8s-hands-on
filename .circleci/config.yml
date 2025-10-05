@@ -26,15 +26,19 @@ workflows:
           - << pipeline.parameters.run-infrastructure >>
     jobs:
       - detect-changes
-      - app-build-and-test:
+      - backend-build-and-test:
+          requires:
+            - detect-changes
+      - frontend-build-and-test:
           requires:
             - detect-changes
       - k8s-validate:
           requires:
             - detect-changes
-      - build-and-push-image:
+      - build-and-push-images:
           requires:
-            - app-build-and-test
+            - backend-build-and-test
+            - frontend-build-and-test
           filters:
             branches:
               only:
@@ -45,10 +49,12 @@ workflows:
   app-workflow:
     when: << pipeline.parameters.run-app-build >>
     jobs:
-      - app-build-and-test
-      - build-and-push-image:
+      - backend-build-and-test
+      - frontend-build-and-test
+      - build-and-push-images:
           requires:
-            - app-build-and-test
+            - backend-build-and-test
+            - frontend-build-and-test
           filters:
             branches:
               only:
@@ -73,44 +79,66 @@ jobs:
             echo "Checking for changes in different directories..."
             git diff --name-only HEAD~1 HEAD || echo "No previous commit to compare"
 
-  app-build-and-test:
+  backend-build-and-test:
     docker:
       - image: cimg/node:18.18
-      - image: cimg/redis:7.0
     working_directory: ~/project
     steps:
       - checkout
       - restore_cache:
           keys:
-            - v1-app-dependencies-{{ checksum "apps/sample-app/package.json" }}
-            - v1-app-dependencies-
+            - v1-backend-dependencies-{{ checksum "apps/surprise-me-backend/package.json" }}
+            - v1-backend-dependencies-
       - run:
-          name: Install dependencies
+          name: Install backend dependencies
           command: |
-            cd apps/sample-app
+            cd apps/surprise-me-backend
             npm install
       - save_cache:
           paths:
-            - apps/sample-app/node_modules
-          key: v1-app-dependencies-{{ checksum "apps/sample-app/package.json" }}
+            - apps/surprise-me-backend/node_modules
+          key: v1-backend-dependencies-{{ checksum "apps/surprise-me-backend/package.json" }}
       - run:
-          name: Run tests
+          name: Run backend tests
           command: |
-            cd apps/sample-app
-            # Add your test command here when you have tests
+            cd apps/surprise-me-backend
             echo "No tests configured yet - skipping test phase"
             npm run --if-present test
       - run:
-          name: Lint code
+          name: Backend security audit
           command: |
-            cd apps/sample-app
-            # Add linting when available
-            echo "No linting configured yet - skipping lint phase"
-            npm run --if-present lint
+            cd apps/surprise-me-backend
+            npm audit --audit-level moderate
+
+  frontend-build-and-test:
+    docker:
+      - image: cimg/node:18.18
+    working_directory: ~/project
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v1-frontend-dependencies-{{ checksum "apps/surprise-me-frontend/package.json" }}
+            - v1-frontend-dependencies-
       - run:
-          name: Security audit
+          name: Install frontend dependencies
           command: |
-            cd apps/sample-app
+            cd apps/surprise-me-frontend
+            npm install
+      - save_cache:
+          paths:
+            - apps/surprise-me-frontend/node_modules
+          key: v1-frontend-dependencies-{{ checksum "apps/surprise-me-frontend/package.json" }}
+      - run:
+          name: Run frontend tests
+          command: |
+            cd apps/surprise-me-frontend
+            echo "No tests configured yet - skipping test phase"
+            npm run --if-present test
+      - run:
+          name: Frontend security audit
+          command: |
+            cd apps/surprise-me-frontend
             npm audit --audit-level moderate
 
   k8s-validate:
@@ -145,7 +173,7 @@ jobs:
               echo "WARNING: Found containers running as root"
             fi
 
-  build-and-push-image:
+  build-and-push-images:
     docker:
       - image: cimg/base:stable
     working_directory: ~/project
@@ -154,10 +182,8 @@ jobs:
       - setup_remote_docker:
           docker_layer_caching: true
       - run:
-          name: Build Docker image
+          name: Build Docker images
           command: |
-            cd apps/sample-app
-
             # Get the short commit SHA
             SHORT_SHA=$(echo $CIRCLE_SHA1 | cut -c1-7)
 
@@ -171,14 +197,28 @@ jobs:
             # Set default username if not provided
             DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME:-"sumitchinchansure"}
 
-            echo "Building image with tag: $IMAGE_TAG"
-            docker build -t $DOCKERHUB_USERNAME/k8s-sample-app:$IMAGE_TAG .
-            docker build -t $DOCKERHUB_USERNAME/k8s-sample-app:latest .
+            echo "Building images with tag: $IMAGE_TAG"
+
+            # Build backend image
+            echo "Building backend image..."
+            cd apps/surprise-me-backend
+            docker build -t $DOCKERHUB_USERNAME/surprise-me-backend:$IMAGE_TAG .
+            docker build -t $DOCKERHUB_USERNAME/surprise-me-backend:latest .
+            cd ../..
+
+            # Build frontend image
+            echo "Building frontend image..."
+            cd apps/surprise-me-frontend
+            docker build -t $DOCKERHUB_USERNAME/surprise-me-frontend:$IMAGE_TAG .
+            docker build -t $DOCKERHUB_USERNAME/surprise-me-frontend:latest .
+            cd ../..
       - run:
           name: Login to Docker Hub
-          command: echo $DOCKERHUB_PASSWORD | docker login -u $DOCKERHUB_USERNAME --password-stdin
+          command: |
+            DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME:-"sumitchinchansure"}
+            echo $DOCKERHUB_PASSWORD | docker login -u $DOCKERHUB_USERNAME --password-stdin
       - run:
-          name: Push Docker image
+          name: Push Docker images
           command: |
             # Get the short commit SHA
             SHORT_SHA=$(echo $CIRCLE_SHA1 | cut -c1-7)
@@ -193,17 +233,25 @@ jobs:
               IMAGE_TAG="${CIRCLE_BRANCH}-${SHORT_SHA}"
             fi
 
-            echo "Pushing image with tag: $IMAGE_TAG"
-            docker push $DOCKERHUB_USERNAME/k8s-sample-app:$IMAGE_TAG
+            echo "Pushing images with tag: $IMAGE_TAG"
+
+            # Push backend images
+            echo "Pushing backend image..."
+            docker push $DOCKERHUB_USERNAME/surprise-me-backend:$IMAGE_TAG
+
+            # Push frontend images
+            echo "Pushing frontend image..."
+            docker push $DOCKERHUB_USERNAME/surprise-me-frontend:$IMAGE_TAG
 
             # Only push latest tag for main/master branch or version tags
             if [ "$CIRCLE_BRANCH" = "master" ] || [ "$CIRCLE_BRANCH" = "main" ] || [ -n "$CIRCLE_TAG" ]; then
-              echo "Pushing latest tag"
-              docker push $DOCKERHUB_USERNAME/k8s-sample-app:latest
+              echo "Pushing latest tags..."
+              docker push $DOCKERHUB_USERNAME/surprise-me-backend:latest
+              docker push $DOCKERHUB_USERNAME/surprise-me-frontend:latest
             fi
       - run:
           name: Update Kubernetes manifests
           command: |
-            # This would typically update manifests with new image tags
-            # For GitOps, this might trigger a separate repository update
-            echo "Image build complete. Consider updating k8s manifests with new image tag."
+            echo "Images built and pushed successfully!"
+            echo "Backend: $DOCKERHUB_USERNAME/surprise-me-backend:$IMAGE_TAG"
+            echo "Frontend: $DOCKERHUB_USERNAME/surprise-me-frontend:$IMAGE_TAG"
