@@ -3,79 +3,22 @@ version: 2.1
 orbs:
   docker: circleci/docker@2.2.0
 
-# Parameters for conditional workflows
-parameters:
-  run-backend:
-    type: boolean
-    default: false
-  run-frontend:
-    type: boolean
-    default: false
-  run-k8s:
-    type: boolean
-    default: false
-  run-all:
-    type: boolean
-    default: true
+# No parameters needed for simplified approach
 
 workflows:
-  # Setup workflow - detects changes and triggers appropriate workflows
-  setup:
-    when:
-      and:
-        - << pipeline.parameters.run-all >>
-        - not:
-            or:
-              - << pipeline.parameters.run-backend >>
-              - << pipeline.parameters.run-frontend >>
-              - << pipeline.parameters.run-k8s >>
+  # Main workflow - simplified with smart path detection
+  main:
     jobs:
       - detect-and-trigger
-
-  # Backend-only workflow
-  backend-workflow:
-    when: << pipeline.parameters.run-backend >>
-    jobs:
-      - backend-build-and-test
-      - build-and-push-backend:
+      - backend-build-and-test:
           requires:
-            - backend-build-and-test
-          filters:
-            branches:
-              only:
-                - main
-                - master
-
-  # Frontend-only workflow
-  frontend-workflow:
-    when: << pipeline.parameters.run-frontend >>
-    jobs:
-      - frontend-build-and-test
-      - build-and-push-frontend:
+            - detect-and-trigger
+      - frontend-build-and-test:
           requires:
-            - frontend-build-and-test
-          filters:
-            branches:
-              only:
-                - main
-                - master
-
-  # K8s validation workflow
-  k8s-workflow:
-    when: << pipeline.parameters.run-k8s >>
-    jobs:
-      - k8s-validate
-
-  # Full workflow (when multiple services changed)
-  full-workflow:
-    when:
-      and:
-        - << pipeline.parameters.run-backend >>
-        - << pipeline.parameters.run-frontend >>
-    jobs:
-      - backend-build-and-test
-      - frontend-build-and-test
-      - k8s-validate
+            - detect-and-trigger
+      - k8s-validate:
+          requires:
+            - detect-and-trigger
       - build-and-push-images:
           requires:
             - backend-build-and-test
@@ -117,67 +60,62 @@ jobs:
             K8S_CHANGED=false
             CONFIG_CHANGED=false
 
-            # Check for changes in each component
-            echo "$CHANGED_FILES" | while IFS= read -r file; do
-              case "$file" in
-                apps/surprise-me-backend/*)
-                  echo "Backend change detected: $file"
-                  echo 'export BACKEND_CHANGED=true' >> $BASH_ENV
-                  ;;
-                apps/surprise-me-frontend/*)
-                  echo "Frontend change detected: $file"
-                  echo 'export FRONTEND_CHANGED=true' >> $BASH_ENV
-                  ;;
-                k8s/*)
-                  echo "Kubernetes change detected: $file"
-                  echo 'export K8S_CHANGED=true' >> $BASH_ENV
-                  ;;
-                .circleci/*)
-                  echo "CI config change detected: $file"
-                  echo 'export CONFIG_CHANGED=true' >> $BASH_ENV
-                  ;;
-                *)
-                  echo "Other change detected: $file"
-                  ;;
-              esac
-            done
-
-            # Source the environment
-            source $BASH_ENV
+            # Check for changes in each component (avoid subshell issues)
+            if [ -n "$CHANGED_FILES" ]; then
+              while IFS= read -r file; do
+                case "$file" in
+                  apps/surprise-me-backend/*)
+                    echo "Backend change detected: $file"
+                    BACKEND_CHANGED=true
+                    ;;
+                  apps/surprise-me-frontend/*)
+                    echo "Frontend change detected: $file"
+                    FRONTEND_CHANGED=true
+                    ;;
+                  k8s/*)
+                    echo "Kubernetes change detected: $file"
+                    K8S_CHANGED=true
+                    ;;
+                  .circleci/*)
+                    echo "CI config change detected: $file"
+                    CONFIG_CHANGED=true
+                    ;;
+                  *)
+                    echo "Other change detected: $file"
+                    ;;
+                esac
+              done <<< "$CHANGED_FILES"
+            fi
 
             echo "=== Change Detection Results ==="
-            echo "Backend changed: ${BACKEND_CHANGED:-false}"
-            echo "Frontend changed: ${FRONTEND_CHANGED:-false}"
-            echo "K8s changed: ${K8S_CHANGED:-false}"
-            echo "Config changed: ${CONFIG_CHANGED:-false}"
+            echo "Backend changed: $BACKEND_CHANGED"
+            echo "Frontend changed: $FRONTEND_CHANGED"
+            echo "K8s changed: $K8S_CHANGED"
+            echo "Config changed: $CONFIG_CHANGED"
 
-            # Trigger appropriate workflows using CircleCI API
-            if [[ "${CONFIG_CHANGED:-false}" == "true" ]]; then
-              echo "🔧 Config changed - triggering full workflow"
-              curl -X POST \
-                -H "Circle-Token: $CIRCLE_TOKEN" \
-                -H "Content-Type: application/json" \
-                -d '{
-                  "parameters": {
-                    "run-all": false,
-                    "run-backend": true,
-                    "run-frontend": true,
-                    "run-k8s": true
-                  }
-                }' \
-                "https://circleci.com/api/v2/project/github/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME/pipeline" || echo "API call failed - using fallback"
-            elif [[ "${BACKEND_CHANGED:-false}" == "true" ]] && [[ "${FRONTEND_CHANGED:-false}" == "true" ]]; then
-              echo "🚀 Both backend and frontend changed - triggering full workflow"
-            elif [[ "${BACKEND_CHANGED:-false}" == "true" ]]; then
-              echo "🔧 Backend changed - triggering backend workflow"
-            elif [[ "${FRONTEND_CHANGED:-false}" == "true" ]]; then
-              echo "🎨 Frontend changed - triggering frontend workflow"
-            elif [[ "${K8S_CHANGED:-false}" == "true" ]]; then
-              echo "☸️  Kubernetes changed - triggering k8s workflow"
+            # Trigger appropriate workflows
+            if [[ "$CONFIG_CHANGED" == "true" ]]; then
+              echo "🔧 Config changed - running full build"
+              # Continue with full workflow
+            elif [[ "$BACKEND_CHANGED" == "true" && "$FRONTEND_CHANGED" == "true" ]]; then
+              echo "🚀 Both backend and frontend changed - running full build"
+              # Continue with full workflow
+            elif [[ "$BACKEND_CHANGED" == "true" ]]; then
+              echo "🔧 Backend changed - but simplified: running full build"
+              # For now, run full build to avoid complexity
+            elif [[ "$FRONTEND_CHANGED" == "true" ]]; then
+              echo "🎨 Frontend changed - but simplified: running full build"
+              # For now, run full build to avoid complexity
+            elif [[ "$K8S_CHANGED" == "true" ]]; then
+              echo "☸️ Kubernetes changed - but simplified: running full build"
+              # For now, run full build to avoid complexity
             else
               echo "📄 Documentation/other changes - skipping build"
-              circleci-agent step halt
+              echo "Stopping pipeline execution"
+              exit 0
             fi
+
+            echo "✅ Continuing with build pipeline"
 
   backend-build-and-test:
     docker:
@@ -262,79 +200,6 @@ jobs:
             done
             echo "✅ Kubernetes validation completed"
 
-  build-and-push-backend:
-    docker:
-      - image: cimg/base:stable
-    working_directory: ~/project
-    steps:
-      - checkout
-      - setup_remote_docker:
-          docker_layer_caching: true
-      - run:
-          name: Build and push backend image
-          command: |
-            cd apps/surprise-me-backend
-
-            # Get the short commit SHA
-            SHORT_SHA=$(echo $CIRCLE_SHA1 | cut -c1-7)
-            DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME:-"sumitchinchansure"}
-
-            # Set image tag
-            if [ -n "$CIRCLE_TAG" ]; then
-              IMAGE_TAG=$CIRCLE_TAG
-            else
-              IMAGE_TAG="${CIRCLE_BRANCH}-${SHORT_SHA}"
-            fi
-
-            echo "🔧 Building backend image: $DOCKERHUB_USERNAME/surprise-me-backend:$IMAGE_TAG"
-            docker build -t $DOCKERHUB_USERNAME/surprise-me-backend:$IMAGE_TAG .
-            docker build -t $DOCKERHUB_USERNAME/surprise-me-backend:latest .
-
-            # Login and push
-            echo $DOCKERHUB_PASSWORD | docker login -u $DOCKERHUB_USERNAME --password-stdin
-            docker push $DOCKERHUB_USERNAME/surprise-me-backend:$IMAGE_TAG
-
-            if [ "$CIRCLE_BRANCH" = "master" ] || [ "$CIRCLE_BRANCH" = "main" ] || [ -n "$CIRCLE_TAG" ]; then
-              docker push $DOCKERHUB_USERNAME/surprise-me-backend:latest
-            fi
-            echo "✅ Backend image pushed successfully"
-
-  build-and-push-frontend:
-    docker:
-      - image: cimg/base:stable
-    working_directory: ~/project
-    steps:
-      - checkout
-      - setup_remote_docker:
-          docker_layer_caching: true
-      - run:
-          name: Build and push frontend image
-          command: |
-            cd apps/surprise-me-frontend
-
-            # Get the short commit SHA
-            SHORT_SHA=$(echo $CIRCLE_SHA1 | cut -c1-7)
-            DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME:-"sumitchinchansure"}
-
-            # Set image tag
-            if [ -n "$CIRCLE_TAG" ]; then
-              IMAGE_TAG=$CIRCLE_TAG
-            else
-              IMAGE_TAG="${CIRCLE_BRANCH}-${SHORT_SHA}"
-            fi
-
-            echo "🎨 Building frontend image: $DOCKERHUB_USERNAME/surprise-me-frontend:$IMAGE_TAG"
-            docker build -t $DOCKERHUB_USERNAME/surprise-me-frontend:$IMAGE_TAG .
-            docker build -t $DOCKERHUB_USERNAME/surprise-me-frontend:latest .
-
-            # Login and push
-            echo $DOCKERHUB_PASSWORD | docker login -u $DOCKERHUB_USERNAME --password-stdin
-            docker push $DOCKERHUB_USERNAME/surprise-me-frontend:$IMAGE_TAG
-
-            if [ "$CIRCLE_BRANCH" = "master" ] || [ "$CIRCLE_BRANCH" = "main" ] || [ -n "$CIRCLE_TAG" ]; then
-              docker push $DOCKERHUB_USERNAME/surprise-me-frontend:latest
-            fi
-            echo "✅ Frontend image pushed successfully"
 
   build-and-push-images:
     docker:
