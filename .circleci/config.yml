@@ -62,6 +62,7 @@ jobs:
 
             # Check for changes in each component (avoid subshell issues)
             if [ -n "$CHANGED_FILES" ]; then
+              echo "$CHANGED_FILES" > /tmp/changed_files.txt
               while IFS= read -r file; do
                 case "$file" in
                   apps/surprise-me-backend/*)
@@ -84,7 +85,7 @@ jobs:
                     echo "Other change detected: $file"
                     ;;
                 esac
-              done <<< "$CHANGED_FILES"
+              done < /tmp/changed_files.txt
             fi
 
             echo "=== Change Detection Results ==="
