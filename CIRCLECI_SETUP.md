@@ -1,5 +1,16 @@
-# CircleCI Setup Guide
+# CircleCI CI/CD Setup Guide
 
+## What is CircleCI?
+CircleCI is a Continuous Integration/Continuous Deployment (CI/CD) tool that automatically builds, tests, and deploys your code whenever you push changes to GitHub.
+
+## How CircleCI Works
+1. **Trigger** - Detects when you push code to GitHub
+2. **Build** - Downloads your code and runs it in a clean environment
+3. **Test** - Runs your tests to make sure everything works
+4. **Build Docker Images** - Creates Docker containers from your code
+5. **Push to Docker Hub** - Uploads images so they can be deployed anywhere
+
+## Quick Overview
 This guide will help you set up CircleCI to automatically build and push Docker images to Docker Hub.
 
 ## Prerequisites
@@ -48,21 +59,27 @@ Go to Project Settings → Environment Variables:
    - `DOCKERHUB_USERNAME`: Your Docker Hub username
    - `DOCKERHUB_PASSWORD`: Your Docker Hub access token
 
-### 4. Workflow Behavior
+### 4. Understanding the Workflow
 
-The CircleCI configuration includes two workflows:
+**What happens when you push code:**
 
-**Build and Test Job:**
-- Runs on every commit
-- Installs dependencies
-- Runs tests (when available)
-- Runs linting (when available)
+1. **Every Push (any branch)**:
+   ```
+   Code Push → Build → Install Dependencies → Run Tests → ✅ Done
+   ```
 
-**Build and Push Job:**
-- Only runs on `master` branch pushes
-- Builds Docker image
-- Tags with `master-<short-sha>` and `latest`
-- Pushes to Docker Hub
+2. **Push to Main Branch**:
+   ```
+   Code Push → Build → Test → Build Docker Images → Push to Docker Hub → ✅ Done
+   ```
+
+**The CircleCI Pipeline:**
+- **detect-and-trigger**: Checks which parts of your app changed
+- **backend-build-and-test**: Tests your backend code
+- **frontend-build-and-test**: Tests your frontend code
+- **build-and-push-images**: Creates Docker images and uploads them
+
+**Smart Building**: Only builds what you changed (backend, frontend, or both)
 
 ### 5. Image Tagging Strategy
 
