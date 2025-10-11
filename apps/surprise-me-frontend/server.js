@@ -22,8 +22,15 @@ app.get('/ready', (req, res) => {
 // API endpoint to get surprise from backend
 app.get('/api/surprise', async (req, res) => {
   try {
-    console.log(`Calling backend at: ${BACKEND_URL}/api/surprise`);
-    const response = await axios.get(`${BACKEND_URL}/api/surprise`, {
+    // Pass through query parameters (like lang=ja)
+    const queryString = Object.keys(req.query).length > 0
+      ? '?' + new URLSearchParams(req.query).toString()
+      : '';
+
+    const backendUrl = `${BACKEND_URL}/api/surprise${queryString}`;
+    console.log(`Calling backend at: ${backendUrl}`);
+
+    const response = await axios.get(backendUrl, {
       timeout: 5000
     });
 

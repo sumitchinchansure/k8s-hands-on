@@ -127,6 +127,14 @@
         <h1>Surprise Me! 🎉</h1>
         <p class="subtitle">When life gets boring, click the button for an amazing fact!</p>
 
+        <div class="language-selector" style="margin-bottom: 2rem;">
+            <label for="languageSelect" style="font-size: 1rem; margin-right: 1rem; opacity: 0.9;">Language:</label>
+            <select id="languageSelect" style="padding: 8px 12px; border-radius: 10px; border: none; background: rgba(255,255,255,0.2); color: white; font-size: 1rem; cursor: pointer;">
+                <option value="en" style="color: black;">🇺🇸 English</option>
+                <option value="ja" style="color: black;">🇯🇵 日本語</option>
+            </select>
+        </div>
+
         <div class="surprise-box" id="surpriseBox">
             <p class="surprise-text" id="surpriseText">Click the button below to get your first surprising fact!</p>
         </div>
@@ -149,13 +157,15 @@
             isLoading = true;
             const button = document.getElementById('surpriseBtn');
             const surpriseText = document.getElementById('surpriseText');
+            const languageSelect = document.getElementById('languageSelect');
+            const selectedLanguage = languageSelect.value;
 
             // Show loading state
             button.innerHTML = '<span class="loading"></span> Getting surprise...';
             button.disabled = true;
 
             try {
-                const response = await fetch('/api/surprise');
+                const response = await fetch(`/api/surprise?lang=${selectedLanguage}`);
                 const data = await response.json();
 
                 if (data.success) {
